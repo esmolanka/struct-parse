@@ -12,7 +12,7 @@ module Control.StructParser.Parser
   , expectationError
   , missingFieldError
   , parseError
-  , inContext
+  , withContext
   , withNode
   , withLeaves
   , withLookup
@@ -48,8 +48,8 @@ dive (pos, q) = localA (first (const (q:pos)))
 jump :: (Position, Qualifier) -> Parser a -> Parser a
 jump (pos, _) = localA (first (const pos))
 
-inContext :: String -> (b -> Parser a) -> b -> Parser a
-inContext s f a = localA (second (Context s :)) (f a)
+withContext :: String -> (b -> Parser a) -> b -> Parser a
+withContext s f a = localA (second (Context s :)) (f a)
 
 type Analyser c a r =
   forall p. (Applicative p, Functor p) => (a -> p r) -> p r -> c -> p r

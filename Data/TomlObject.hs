@@ -11,7 +11,6 @@ import Control.Arrow
 import Control.Category
 import Control.Applicative
 import Control.StructParser
-import Control.StructParser.Types
 
 import Data.Functor.Foldable (Fix (..))
 import Data.Int
@@ -163,6 +162,9 @@ key k = mkParsing (\f -> withObject (withField k f))
 
 fields :: Parsing Parser AnnotatedTomlObject (HM.HashMap Text AnnotatedTomlObject)
 fields = mkParsing withObject
+
+context :: String -> Parsing Parser a a
+context ctx = mkParsing (withContext ctx)
 
 instance Hole Parser AnnotatedTomlObject where
   holes = elems <|> (fields >>> arr HM.elems) <|> pure []

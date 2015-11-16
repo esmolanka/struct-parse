@@ -10,7 +10,6 @@ import qualified Data.HashMap.Strict as HM
 import Data.Hashable
 
 import Control.StructParser
-import Control.StructParser.Types
 import Data.Object.Types
 import Data.ConstIndex
 
