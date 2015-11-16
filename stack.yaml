@@ -1,0 +1,7 @@
+flags: {}
+packages:
+- '.'
+- 'packages/htoml'
+extra-deps:
+- recursion-schemes-4.1.2
+resolver: lts-3.13
