@@ -8,6 +8,7 @@ module Data.Object.Parse where
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import Data.Hashable
+-- import Control.Comonad.Cofree
 
 import Control.StructParser
 import Data.Object.Types
@@ -21,7 +22,7 @@ withObject
      (HashMap k (AnnotatedObject k s) -> Parser a)
   -> AnnotatedObject k s
   -> Parser a
-withObject = withNode (Id "Object") $ \cont err obj ->
+withObject = withNode (QObject "Object") $ \cont err obj ->
   case obj of
     Object pairs -> cont pairs
     _ -> err
@@ -31,14 +32,14 @@ withArray
      ([AnnotatedObject k s] -> Parser a)
   -> AnnotatedObject k s
   -> Parser a
-withArray = withNode (Id "Array") $ \cont err obj ->
+withArray = withNode (QObject "Array") $ \cont err obj ->
   case obj of
     Array elems -> cont elems
     _ -> err
 
 withScalar
   :: (GetId s) =>
-     Identifier
+     Qualifier
   -> (s -> Parser a)
   -> AnnotatedObject k s
   -> Parser a
@@ -75,7 +76,7 @@ withField
   -> HashMap k (AnnotatedObject k s)
   -> Parser a
 withField = withLookup $ \cont err k hm ->
-  maybe (err (fieldIdentifier k)) cont (HM.lookup k hm)
+  maybe (err (fieldQualifier k)) cont (HM.lookup k hm)
 
 withElem
   :: Int

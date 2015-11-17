@@ -13,6 +13,8 @@ module Control.StructParser.Parser
   , missingFieldError
   , parseError
   , withContext
+  , dive
+  , jump
   , withNode
   , withLeaves
   , withLookup
@@ -30,33 +32,29 @@ import qualified Data.Set as S
 
 import Control.StructParser.Types
 
-expectationError :: Identifier -> Identifier -> Parser a
-expectationError expected got = mkParseError $ Expectation expected (Just got)
+expectationError :: Qualifier -> Qualifier -> Parser a
+expectationError expected got =
+  mkParseError (Expectation expected (Just got))
 
-missingFieldError :: Identifier -> Parser a
-missingFieldError expected = mkParseError $ Expectation expected Nothing
+missingFieldError :: Qualifier -> Parser a
+missingFieldError expected =
+  mkParseError (Expectation expected Nothing)
 
 parseError :: String -> Parser a
-parseError msg = mkParseError $ ParseError msg
+parseError msg =
+  mkParseError (ParseError msg)
 
-localA :: ((Position, [Context]) -> (Position, [Context])) -> Parser a -> Parser a
-localA f p = mkParser (\env -> runReaderT (unParser p) (f env))
-
-dive :: (Position, Qualifier) -> Parser a -> Parser a
-dive (pos, q) = localA (first (const (q:pos)))
-
-jump :: (Position, Qualifier) -> Parser a -> Parser a
-jump (pos, _) = localA (first (const pos))
-
-withContext :: String -> (b -> Parser a) -> b -> Parser a
-withContext s f a = localA (second (Context s :)) (f a)
+-- | Run a parser with a Context annotation
+withContext :: String -> (a -> Parser r) -> a -> Parser r
+withContext ctx p a =
+  localA (second (Context ctx :)) (p a)
 
 type Analyser c a r =
   forall p. (Applicative p, Functor p) => (a -> p r) -> p r -> c -> p r
 
 withNode
   :: (GetId (f (Annotated f))) =>
-     Identifier
+     Qualifier
   -> Analyser (f (Annotated f)) a r
   -> (a -> Parser r)
   -> Annotated f -> Parser r
@@ -79,12 +77,13 @@ withLeaves mapper cont = sequenceA . mapper go
 
 withLookup
   :: (FieldKey k) =>
-     (forall p. (Annotated f -> p r) -> (Identifier -> p r) -> k -> g k (Annotated f) -> p r)
+     (forall p. (Annotated f -> p r) -> (Qualifier -> p r) -> k -> g k (Annotated f) -> p r)
   -> k
   -> (Annotated f -> Parser r)
   -> g k (Annotated f)
   -> Parser r
-withLookup lookup k cont = lookup cont missingFieldError k
+withLookup lookup k cont =
+  lookup cont missingFieldError k
 
 withIndex
   :: (forall p. (Annotated f -> p r) -> p r -> Int -> g (Annotated f) -> p r)
@@ -92,7 +91,8 @@ withIndex
   -> (Annotated f -> Parser r)
   -> g (Annotated f)
   -> Parser r
-withIndex index n cont = index cont (missingFieldError $ Id $ "[" ++ show n ++ "]") n
+withIndex index n cont =
+  index cont (missingFieldError $ QIndex n) n
 
 ----------------------------------------------------------------------
 -- Internal
@@ -129,7 +129,9 @@ instance Applicative Parser where
   fa <*> b = mkParser (\env -> runReaderT (unParser fa) env <*> runReaderT (unParser b) env)
 
 mkParseError :: FailureTreeF FailureTree -> Parser a
-mkParseError fs = mkParser (\(path, ctx) ->  Failure . settle (ctx :< fs) . reverse $ path)
+mkParseError fs =
+  mkParser $ \(path, ctx) ->
+    Failure . settle (ctx :< fs) . reverse $ path
 
 instance Alternative Parser where
   empty = mkParseError (ParseError "empty")
@@ -138,19 +140,30 @@ instance Alternative Parser where
 settle :: FailureTree -> Position -> FailureTree
 settle tree = fst . foldr embed (tree, Nothing)
   where
-    embed (InObj idn) (tree, _) = (tree, Just idn)
+    embed (QObject idn) (tree, _) = (tree, Just (QObject idn))
     embed q (tree, ty) = ([] :< Dive (q, ty)  tree, Nothing)
 
 runParser' :: (Position, [Context]) -> Parser a -> Result a
 runParser' p = flip runReaderT p . unParser
 
 runParser :: (b -> Parser a) -> b -> Either FailureTree a
-runParser p v = unResult . runParser' ([InObj (Id "@")], []) $ p v
+runParser p v = unResult . runParser' ([QObject "@"], []) $ p v
   where unResult (Success a)      = Right a
         unResult (Failure reason) = Left reason
 
 mkParser :: ((Position, [Context]) -> Result a) -> Parser a
 mkParser fr = Parser (ReaderT fr)
+
+localA :: ((Position, [Context]) -> (Position, [Context])) -> Parser a -> Parser a
+localA f p = mkParser (\env -> runReaderT (unParser p) (f env))
+
+-- | Sets current parsing context to position inside of the parsed object
+dive :: (Position, Qualifier) -> Parser a -> Parser a
+dive (pos, q) = localA (first (const (q:pos)))
+
+-- | Sets current parsing context to position of object
+jump :: (Position, Qualifier) -> Parser a -> Parser a
+jump (pos, _) = localA (first (const pos))
 
 ----------------------------------------------------------------------
 -- Failure tree
@@ -158,16 +171,19 @@ mkParser fr = Parser (ReaderT fr)
 data FailureTreeF e
   = And [e]
   | Or  [e]
-  | Dive (Qualifier, Maybe Identifier) e
-  | Expectation Identifier (Maybe Identifier)
+  | Dive (Qualifier, Maybe Qualifier) e
+  | Expectation Qualifier (Maybe Qualifier)
   | ParseError String
     deriving (Functor, Show, Ord, Eq)
 
 type FailureTree = Cofree FailureTreeF [Context]
 data MergeOperation = Both | Any deriving (Show, Eq)
 
+-- Paths are stored in reverse order, so reversing of list is required.
 commonPrefix :: (Eq a) => [a] -> [a] -> [a]
-commonPrefix a b = reverse . map snd . takeWhile fst $ zipWith (\a b -> (a == b, a)) (reverse a) (reverse b)
+commonPrefix a b =
+  reverse . map snd . takeWhile fst $
+    zipWith (\a b -> (a == b, a)) (reverse a) (reverse b)
 
 mergeFailureTrees :: MergeOperation -> FailureTree -> FailureTree -> FailureTree
 mergeFailureTrees mergeOp ltree rtree = go mergeOp ltree rtree

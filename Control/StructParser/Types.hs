@@ -6,32 +6,22 @@ import Control.Comonad.Cofree
 import Data.Functor.Foldable (Fix (..))
 import Text.PrettyPrint.ANSI.Leijen as PP
 
-newtype Identifier = Id
-  { unId :: String }
- deriving (Show, Ord, Eq)
-
 data Qualifier
-  = InObj Identifier
-  | InField String
-  | AtIndex Int
+  = QObject String
+  | QField String
+  | QIndex Int
     deriving (Show, Ord, Eq)
 
 instance Pretty Qualifier where
-  pretty (InObj _)    = empty
-  pretty (InField f)  = "in" <+> dot <> text f
-  pretty (AtIndex i)  = "at" <+> brackets (int i)
-
-instance Pretty Identifier where
-  pretty (Id s) = text s
+  pretty (QObject s) = text s
+  pretty (QField f)  = dot <> text f
+  pretty (QIndex i)  = brackets (int i)
 
 class GetId a where
-  getId :: a -> Identifier
-  getIn :: a -> Qualifier
-  getIn = InObj . getId
+  getId :: a -> Qualifier
 
 class (Ord k) => FieldKey k where
   fieldQualifier :: k -> Qualifier
-  fieldIdentifier :: k -> Identifier
 
 class WithAnnotation f where
   annotate :: Raw f -> Annotated f

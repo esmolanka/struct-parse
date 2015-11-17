@@ -38,42 +38,41 @@ data Scalar
     deriving (Show, Eq, Ord)
 
 instance GetId Scalar where
-  getId (SString _) = Id "String"
-  getId (SInteger _) = Id "Integer"
-  getId (SFloat _) = Id "Float"
-  getId (SBoolean _) = Id "Boolean"
-  getId (SDatetime _) = Id "Datetime"
+  getId (SString _) = QObject "String"
+  getId (SInteger _) = QObject "Integer"
+  getId (SFloat _) = QObject "Float"
+  getId (SBoolean _) = QObject "Boolean"
+  getId (SDatetime _) = QObject "Datetime"
 
 type TomlObject = Object Text Scalar
 type AnnotatedTomlObject = AnnotatedObject Text Scalar
 
 instance FieldKey Text where
-  fieldQualifier s = InField (T.unpack s)
-  fieldIdentifier s = Id $ "." ++ (T.unpack s)
+  fieldQualifier s = QField (T.unpack s)
 
 withInteger :: (Int64 -> Parser a) -> AnnotatedTomlObject -> Parser a
-withInteger p = withScalar (Id "Integer") go
+withInteger p = withScalar (QObject "Integer") go
   where
     go (SInteger n) = p n
-    go s = expectationError (Id "Integer") (getId $ Scalar s)
+    go s = expectationError (QObject "Integer") (getId $ Scalar s)
 
 withFloat :: (Double -> Parser a) -> AnnotatedTomlObject -> Parser a
-withFloat p = withScalar (Id "Float") go
+withFloat p = withScalar (QObject "Float") go
   where
     go (SFloat n) = p n
-    go s = expectationError (Id "Float") (getId $ Scalar s)
+    go s = expectationError (QObject "Float") (getId $ Scalar s)
 
 withString :: (Text -> Parser a) -> AnnotatedTomlObject -> Parser a
-withString p = withScalar (Id "String") go
+withString p = withScalar (QObject "String") go
   where
     go (SString s) = p s
-    go s = expectationError (Id "Bool") (getId $ Scalar s)
+    go s = expectationError (QObject "Bool") (getId $ Scalar s)
 
 withBool :: (Bool -> Parser a) -> AnnotatedTomlObject -> Parser a
-withBool p = withScalar (Id "Bool") go
+withBool p = withScalar (QObject "Bool") go
   where
     go (SBoolean s) = p s
-    go s = expectationError (Id "Bool") (getId $ Scalar s)
+    go s = expectationError (QObject "Bool") (getId $ Scalar s)
 
 class FromTOML a where
   parseTOML :: AnnotatedTomlObject -> Parser a

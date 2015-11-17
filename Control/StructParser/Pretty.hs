@@ -29,6 +29,11 @@ ppBlock :: [Doc] -> Doc
 ppBlock [] = empty
 ppBlock (a:as) = braces $ (vcat $ (empty <+> align a) : map ((comma <+>) . align) as) <> linebreak
 
+ppInsideQ :: Qualifier -> Doc
+ppInsideQ q@QObject{} = text "in" <+> pretty q
+ppInsideQ q@QField{}  = text "in" <+> pretty q
+ppInsideQ q@QIndex{}  = text "at" <+> pretty q
+
 ppFailureTree :: FailureTree -> Doc
 ppFailureTree tree = "Failure:" <> linebreak <> failure <> linebreak
   where
@@ -37,7 +42,7 @@ ppFailureTree tree = "Failure:" <> linebreak <> failure <> linebreak
     prettyAlg c (Dive (q, mty) mdoc) = do
       doc <- local (const c) mdoc
       let tydoc = maybe empty (\idn -> parens (pretty idn)) mty
-      ppInContext c (yellow (pretty q <> tydoc <> colon) <+> doc)
+      ppInContext c (yellow (ppInsideQ q <> tydoc <> colon) <+> doc)
     prettyAlg c (Expectation exp Nothing) =
       ppInContext c ("required" <+> pretty exp)
     prettyAlg c (Expectation exp (Just got)) =
@@ -62,4 +67,3 @@ parseIO p a =
       return Nothing
     Right a ->
       return $ Just a
-
