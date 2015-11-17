@@ -66,7 +66,7 @@ withString :: (Text -> Parser a) -> AnnotatedTomlObject -> Parser a
 withString p = withScalar (QObject "String") go
   where
     go (SString s) = p s
-    go s = expectationError (QObject "Bool") (getId $ Scalar s)
+    go s = expectationError (QObject "String") (getId $ Scalar s)
 
 withBool :: (Bool -> Parser a) -> AnnotatedTomlObject -> Parser a
 withBool p = withScalar (QObject "Bool") go
