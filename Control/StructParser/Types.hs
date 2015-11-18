@@ -1,9 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Control.StructParser.Types where
 
 import Control.Comonad.Cofree
 import Data.Functor.Foldable (Fix (..))
+import Data.Text as T
 import Text.PrettyPrint.ANSI.Leijen as PP
 
 data Qualifier
@@ -22,6 +24,12 @@ class GetId a where
 
 class (Ord k) => FieldKey k where
   fieldQualifier :: k -> Qualifier
+
+instance FieldKey [Char] where
+  fieldQualifier = QField
+
+instance FieldKey Text where
+  fieldQualifier s = QField (T.unpack s)
 
 class WithAnnotation f where
   annotate :: Raw f -> Annotated f

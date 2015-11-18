@@ -5,7 +5,7 @@ import Control.StructParser
 
 test :: Show a => Parsing Parser AnnotatedTomlObject a -> IO ()
 test p = do
-  r <- either (error . show) id <$> readObjectFromFile "example.toml"
+  r <- either (error . show) id <$> readFromFile "example.toml"
   maybe (return ()) print =<< parseIO (runParsing p) r
 
 main :: IO ()

@@ -2,15 +2,36 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-{-# OPTIONS_GHC -fno-warn-orphans #-}
-
-module Data.TomlObject where
+module Data.TomlObject
+  ( TomlObject
+  , AnnotatedTomlObject
+  , StructParser
+  , parseToml
+  , readFromFile
+  , parseFromFile
+  , int
+  , double
+  , bool
+  , string
+  , fields
+  , elems
+  , key
+  , index
+  , context
+  , this
+  , FromToml (..)
+  -- * Re-exporting for convenience
+  , module Control.Parsing
+  , arr
+  , Alternative (..)
+  ) where
 
 import Prelude hiding (id, (.))
 import Control.Arrow
 import Control.Category
 import Control.Applicative
 import Control.StructParser
+import Control.Parsing
 
 import Data.Functor.Foldable (Fix (..))
 import Data.Int
@@ -20,14 +41,32 @@ import qualified Data.HashMap.Strict as HM
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
-import qualified Data.Traversable as Tr
 
-import Text.Parsec.Error (ParseError)
 import Text.Toml
 import Text.Toml.Types
 
 import Data.Object.Types
 import Data.Object.Parse
+
+----------------------------------------------------------------------
+-- Main interface
+
+parseToml :: StructParser AnnotatedTomlObject a -> TomlObject -> Either String a
+parseToml p = parsePretty (runParsing p)
+
+readFromFile :: FilePath -> IO (Either String TomlObject)
+readFromFile filepath =
+  left show . parseObject filepath <$> T.readFile filepath
+    where
+      parseObject identifier body =
+        transformTable <$> parseTomlDoc identifier body
+
+parseFromFile :: FilePath -> StructParser AnnotatedTomlObject a -> IO (Either String a)
+parseFromFile filepath parser =
+  (>>= parseToml parser) <$> readFromFile filepath
+
+----------------------------------------------------------------------
+-- Data definitions
 
 data Scalar
   = SString Text
@@ -46,9 +85,6 @@ instance GetId Scalar where
 
 type TomlObject = Object Text Scalar
 type AnnotatedTomlObject = AnnotatedObject Text Scalar
-
-instance FieldKey Text where
-  fieldQualifier s = QField (T.unpack s)
 
 withInteger :: (Int64 -> Parser a) -> AnnotatedTomlObject -> Parser a
 withInteger p = withScalar (QObject "Integer") go
@@ -74,36 +110,6 @@ withBool p = withScalar (QObject "Bool") go
     go (SBoolean s) = p s
     go s = expectationError (QObject "Bool") (getId $ Scalar s)
 
-class FromTOML a where
-  parseTOML :: AnnotatedTomlObject -> Parser a
-
-instance FromTOML AnnotatedTomlObject where
-  parseTOML = pure
-
-instance FromTOML TomlObject where
-  parseTOML = pure . unannotate
-
-instance FromTOML Int where
-  parseTOML v = fromIntegral <$> withInteger pure v
-
-instance FromTOML Text where
-  parseTOML = withString pure
-
-instance FromTOML String where
-  parseTOML = withString (pure . T.unpack)
-
-instance FromTOML Bool where
-  parseTOML = withBool pure
-
-instance FromTOML a => FromTOML [a] where
-  parseTOML = withArray (withElems parseTOML)
-
-instance FromTOML a => FromTOML (HM.HashMap Text a) where
-  parseTOML = withObject (Tr.traverse parseTOML)
-
-instance FromTOML a => FromTOML (M.Map Text a) where
-  parseTOML = withObject (fmap (M.fromList . HM.toList) . Tr.traverse parseTOML)
-
 ----------------------------------------------------------------------
 -- Parsing from string
 
@@ -127,43 +133,71 @@ transformScalar tval = Fix $
     VDatetime ts  -> Scalar $ SDatetime ts
     VArray values -> Array  $ map transformScalar values
 
-parseObject :: FilePath -> Text -> Either ParseError (Object Text Scalar)
-parseObject identifier body =
-  transformTable <$> parseTomlDoc identifier body
-
-readObjectFromFile :: FilePath -> IO (Either ParseError (Object Text Scalar))
-readObjectFromFile filepath =
-  parseObject filepath <$> T.readFile filepath
-
 ----------------------------------------------------------------------
 -- Parser composer combinators
 
-bool :: Parsing Parser AnnotatedTomlObject Bool
+
+bool :: StructParser AnnotatedTomlObject Bool
 bool = mkParsing withBool
 
-int :: Parsing Parser AnnotatedTomlObject Int64
+int :: StructParser AnnotatedTomlObject Int64
 int = mkParsing withInteger
 
-double :: Parsing Parser AnnotatedTomlObject Double
+double :: StructParser AnnotatedTomlObject Double
 double = mkParsing withFloat
 
-string :: Parsing Parser AnnotatedTomlObject Text
+string :: StructParser AnnotatedTomlObject Text
 string = mkParsing withString
 
-index :: Int -> Parsing Parser AnnotatedTomlObject AnnotatedTomlObject
+index :: Int -> StructParser AnnotatedTomlObject AnnotatedTomlObject
 index n = mkParsing (\f -> withArray (withElem n f))
 
-elems :: Parsing Parser AnnotatedTomlObject [AnnotatedTomlObject]
+elems :: StructParser AnnotatedTomlObject [AnnotatedTomlObject]
 elems = mkParsing withArray
 
-key :: Text -> Parsing Parser AnnotatedTomlObject AnnotatedTomlObject
-key k = mkParsing (\f -> withObject (withField k f))
+key :: String -> StructParser AnnotatedTomlObject AnnotatedTomlObject
+key k = mkParsing (\f -> withObject (withField (T.pack k) f))
 
-fields :: Parsing Parser AnnotatedTomlObject (HM.HashMap Text AnnotatedTomlObject)
+fields :: StructParser AnnotatedTomlObject (HM.HashMap Text AnnotatedTomlObject)
 fields = mkParsing withObject
 
-context :: String -> Parsing Parser a a
+context :: String -> StructParser a a
 context ctx = mkParsing (withContext ctx)
+
+this :: StructParser a a
+this = id
+
+class FromToml a where
+  fromToml :: StructParser AnnotatedTomlObject a
+
+instance FromToml String where
+  fromToml = string >>> arr T.unpack
+
+instance FromToml T.Text where
+  fromToml = string
+
+instance FromToml Int where
+  fromToml = int >>> arr fromIntegral
+
+instance FromToml Integer where
+  fromToml = int >>> arr fromIntegral
+
+instance FromToml Double where
+  fromToml = double
+
+instance FromToml Bool where
+  fromToml = bool
+
+instance (FromToml a) => FromToml (M.Map String a) where
+  fromToml =
+    fields
+    >>> traversing fromToml
+    >>> arr (M.fromList . map (first T.unpack) . HM.toList)
+
+instance (FromToml a) => FromToml [a] where
+  fromToml =
+    elems
+    >>> traversing fromToml
 
 instance Hole Parser AnnotatedTomlObject where
   holes = elems <|> (fields >>> arr HM.elems) <|> pure []
