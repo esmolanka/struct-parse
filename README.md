@@ -15,7 +15,7 @@ parseFromFile :: FilePath -> Data.TomlObject.TomlParser a -> IO (Either String a
 -- So let's read it, run parser and print results (or errors)
 ghci> let example p = either putStrLn print =<< parseFromFile "example.toml" p
 
-
+-- What is the interface of parser?
 ghci> :browse Data.TomlObject
 ...
 bool :: StructParser AnnotatedTomlObject Bool
@@ -31,9 +31,15 @@ this :: StructParser a a
 traversing :: (Traversable t) => StructParser a b -> StructParser (t a) (t b)
 ...
 
+-- Something simple
+ghci> example $ key "title" >>> string
+"TOML Example"
+
+-- All int ports of databases
 ghci> example $ key "database" >>> key "ports" >>> elems >>> traversing int
 [8001,8001,8002]
 
+-- Bool? Nah, error.
 ghci> example $ key "database" >>> key "ports" >>> elems >>> traversing bool
 Failure:
 in .database(Object): in .ports(Array): all of
@@ -42,9 +48,11 @@ in .database(Object): in .ports(Array): all of
 , at [2](Integer): expected Bool, got Integer
 }
 
+-- Server names and their IPs
 ghci> example $ key "servers" >>> fields >>> traversing (key "ip" >>> string)
 fromList [("alpha","10.0.0.1"),("beta","10.0.0.2")]
 
+-- More complex query?
 ghci> :{
 ghci| example $ (,)
 ghci|   <$> (key "owner" >>> key "name" >>> string)
